@@ -22,8 +22,6 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <stdbool.h>
-
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -83,8 +81,43 @@ const osThreadAttr_t UARTListenTask_attributes = {
   .stack_size = sizeof(UARTListenTaskBuffer),
   .priority = (osPriority_t) osPriorityLow,
 };
+/* Definitions for UARTTestTask */
+osThreadId_t UARTTestTaskHandle;
+uint32_t UARTTestTaskBuffer[ 128 ];
+osStaticThreadDef_t UARTTestTaskControlBlock;
+const osThreadAttr_t UARTTestTask_attributes = {
+  .name = "UARTTestTask",
+  .cb_mem = &UARTTestTaskControlBlock,
+  .cb_size = sizeof(UARTTestTaskControlBlock),
+  .stack_mem = &UARTTestTaskBuffer[0],
+  .stack_size = sizeof(UARTTestTaskBuffer),
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for I2CTestTask */
+osThreadId_t I2CTestTaskHandle;
+uint32_t I2CTestTaskBuffer[ 128 ];
+osStaticThreadDef_t I2CTestTaskControlBlock;
+const osThreadAttr_t I2CTestTask_attributes = {
+  .name = "I2CTestTask",
+  .cb_mem = &I2CTestTaskControlBlock,
+  .cb_size = sizeof(I2CTestTaskControlBlock),
+  .stack_mem = &I2CTestTaskBuffer[0],
+  .stack_size = sizeof(I2CTestTaskBuffer),
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for SPITestTask */
+osThreadId_t SPITestTaskHandle;
+uint32_t SPITestTaskBuffer[ 128 ];
+osStaticThreadDef_t SPITestTaskControlBlock;
+const osThreadAttr_t SPITestTask_attributes = {
+  .name = "SPITestTask",
+  .cb_mem = &SPITestTaskControlBlock,
+  .cb_size = sizeof(SPITestTaskControlBlock),
+  .stack_mem = &SPITestTaskBuffer[0],
+  .stack_size = sizeof(SPITestTaskBuffer),
+  .priority = (osPriority_t) osPriorityLow,
+};
 /* USER CODE BEGIN PV */
-
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -100,6 +133,9 @@ static void MX_SPI1_Init(void);
 static void MX_USART6_UART_Init(void);
 void StartDefaultTask(void *argument);
 void StartUARTListenTask(void *argument);
+void StartUARTTestTask(void *argument);
+void StartI2CTestTask(void *argument);
+void StartSPITestTask(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -107,45 +143,6 @@ void StartUARTListenTask(void *argument);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
-static bool test_i2c(char *test_string, uint8_t len)
-{
-	char i2c_rx_buff[128] = {0};
-
-	HAL_I2C_Master_Transmit_IT(&hi2c1, hi2c2.Init.OwnAddress1, test_string, len);
-	HAL_I2C_Slave_Receive(&hi2c2, i2c_rx_buff, len, HAL_MAX_DELAY);
-
-	HAL_UART_Transmit(&huart3, "I2C rx: ", 8, HAL_MAX_DELAY);
-	HAL_UART_Transmit(&huart3, i2c_rx_buff, sizeof(i2c_rx_buff), HAL_MAX_DELAY);
-	HAL_UART_Transmit(&huart3, "\r\n", 2, HAL_MAX_DELAY);
-
-	return (0 == strcmp(test_string, i2c_rx_buff));
-}
-
-static bool test_spi(char *test_string, uint8_t len)
-{
-	char spi_rx_buff[128] = {0};
-
-	HAL_SPI_TransmitReceive(&hspi1, test_string, spi_rx_buff, len, HAL_MAX_DELAY);
-	HAL_UART_Transmit(&huart3, "SPI rx: ", 8, HAL_MAX_DELAY);
-	HAL_UART_Transmit(&huart3, spi_rx_buff, sizeof(spi_rx_buff), HAL_MAX_DELAY);
-	HAL_UART_Transmit(&huart3, "\r\n", 2, HAL_MAX_DELAY);
-
-	return (0 == strcmp(test_string, spi_rx_buff));
-}
-
-static bool test_uart(char *test_string, uint8_t len)
-{
-	char uart_test_rx_buff[128] = {0};
-
-	HAL_UART_Receive_IT(&huart6, uart_test_rx_buff, len);
-	HAL_UART_Transmit(&huart6, test_string, len, HAL_MAX_DELAY);
-	HAL_UART_Transmit(&huart3, "UART rx: ", 9, HAL_MAX_DELAY);
-	HAL_UART_Transmit(&huart3, uart_test_rx_buff, sizeof(uart_test_rx_buff), HAL_MAX_DELAY);
-	HAL_UART_Transmit(&huart3, "\r\n", 2, HAL_MAX_DELAY);
-
-	return (0 == strcmp(test_string, uart_test_rx_buff));
-}
 
 /* USER CODE END 0 */
 
@@ -187,7 +184,7 @@ int main(void)
   MX_SPI1_Init();
   MX_USART6_UART_Init();
   /* USER CODE BEGIN 2 */
-
+  serial_uart_initialize();
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -215,6 +212,15 @@ int main(void)
 
   /* creation of UARTListenTask */
   UARTListenTaskHandle = osThreadNew(StartUARTListenTask, NULL, &UARTListenTask_attributes);
+
+  /* creation of UARTTestTask */
+  UARTTestTaskHandle = osThreadNew(StartUARTTestTask, NULL, &UARTTestTask_attributes);
+
+  /* creation of I2CTestTask */
+  I2CTestTaskHandle = osThreadNew(StartI2CTestTask, NULL, &I2CTestTask_attributes);
+
+  /* creation of SPITestTask */
+  SPITestTaskHandle = osThreadNew(StartSPITestTask, NULL, &SPITestTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -701,7 +707,7 @@ void StartDefaultTask(void *argument)
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+	  vTaskDelay(pdMS_TO_TICKS(10));
   }
   /* USER CODE END 5 */
 }
@@ -716,77 +722,51 @@ void StartDefaultTask(void *argument)
 void StartUARTListenTask(void *argument)
 {
   /* USER CODE BEGIN StartUARTListenTask */
-  static volatile uint8_t length_byte = 0;
-  static volatile char uart_rx_buff[256] = {0};
-  static volatile char uart_tx_buff[512] = {0};
-
-  HAL_UART_Transmit(&huart3, "UART Task start\r\n", 18, HAL_MAX_DELAY);
-
-  /* Infinite loop */
-  for(;;)
-  {
-	  if (HAL_OK == HAL_UART_Receive(&huart2, &length_byte, 1, HAL_MAX_DELAY))
-	  {
-		  if (length_byte > 0)
-		  {
-			  if (HAL_OK == HAL_UART_Receive(&huart2, uart_rx_buff, length_byte, HAL_MAX_DELAY))
-			  {
-				  // confirm reception
-				  bzero(uart_tx_buff, sizeof(uart_tx_buff));
-				  sprintf(uart_tx_buff, "Device received test string: %s\r\n", uart_rx_buff);
-				  HAL_UART_Transmit(&huart3, uart_tx_buff, strlen(uart_tx_buff), HAL_MAX_DELAY);
-				  HAL_UART_Transmit(&huart2, uart_tx_buff, strlen(uart_tx_buff), HAL_MAX_DELAY);
-				  bzero(uart_tx_buff, sizeof(uart_tx_buff));
-
-				  // uart test
-				  if(test_uart(uart_rx_buff, length_byte))
-				  {
-					  sprintf(uart_tx_buff, "UART Test Success\r\n");
-				  }
-				  else
-				  {
-					  sprintf(uart_tx_buff, "UART Test Failure\r\n");
-				  }
-
-				  HAL_UART_Transmit(&huart3, uart_tx_buff, strlen(uart_tx_buff), HAL_MAX_DELAY);
-				  HAL_UART_Transmit(&huart2, uart_tx_buff, strlen(uart_tx_buff), HAL_MAX_DELAY);
-				  bzero(uart_tx_buff, sizeof(uart_tx_buff));
-
-				  // spi test
-				  if(test_spi(uart_rx_buff, length_byte))
-				  {
-					  sprintf(uart_tx_buff, "SPI Test Success\r\n");
-				  }
-				  else
-				  {
-					  sprintf(uart_tx_buff, "SPI Test Failure\r\n");
-				  }
-
-				  HAL_UART_Transmit(&huart3, uart_tx_buff, strlen(uart_tx_buff), HAL_MAX_DELAY);
-				  HAL_UART_Transmit(&huart2, uart_tx_buff, strlen(uart_tx_buff), HAL_MAX_DELAY);
-				  bzero(uart_tx_buff, sizeof(uart_tx_buff));
-
-				  // i2c test
-				  if(test_i2c(uart_rx_buff, length_byte))
-				  {
-					  sprintf(uart_tx_buff, "I2C Test Success\r\n");
-				  }
-				  else
-				  {
-					  sprintf(uart_tx_buff, "I2C Test Failure\r\n");
-				  }
-
-				  HAL_UART_Transmit(&huart3, uart_tx_buff, strlen(uart_tx_buff), HAL_MAX_DELAY);
-				  HAL_UART_Transmit(&huart2, uart_tx_buff, strlen(uart_tx_buff), HAL_MAX_DELAY);
-				  bzero(uart_tx_buff, sizeof(uart_tx_buff));
-			  }
-
-		  }
-		  bzero(uart_rx_buff, sizeof(uart_rx_buff));
-	  }
-	  vTaskDelay(pdMS_TO_TICKS(10));
-  }
+	test_listener_task_loop();
   /* USER CODE END StartUARTListenTask */
+}
+
+/* USER CODE BEGIN Header_StartUARTTestTask */
+/**
+* @brief Function implementing the UARTTestTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartUARTTestTask */
+void StartUARTTestTask(void *argument)
+{
+  /* USER CODE BEGIN StartUARTTestTask */
+  /* Infinite loop */
+	test_task_loop(&test_defs[TESTIDX_UART]);
+  /* USER CODE END StartUARTTestTask */
+}
+
+/* USER CODE BEGIN Header_StartI2CTestTask */
+/**
+* @brief Function implementing the I2CTestTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartI2CTestTask */
+void StartI2CTestTask(void *argument)
+{
+  /* USER CODE BEGIN StartI2CTestTask */
+	test_task_loop(&test_defs[TESTIDX_I2C]);
+  /* USER CODE END StartI2CTestTask */
+}
+
+/* USER CODE BEGIN Header_StartSPITestTask */
+/**
+* @brief Function implementing the SPITestTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartSPITestTask */
+void StartSPITestTask(void *argument)
+{
+  /* USER CODE BEGIN StartSPITestTask */
+	test_task_loop(&test_defs[TESTIDX_SPI]);
+  /* USER CODE END StartSPITestTask */
 }
 
 /**

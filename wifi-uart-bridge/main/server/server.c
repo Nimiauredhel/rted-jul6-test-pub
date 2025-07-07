@@ -4,7 +4,8 @@ static int server_socket = -1;
 static struct sockaddr_in server_addr ={0};
 
 static volatile bool ap_connected = false;
-static uint8_t rx_buff[64] = {0};
+static uint8_t server_tx_buff[TEST_PACKET_SIZE_BYTES] = {0};
+static uint8_t server_rx_buff[TEST_PACKET_SIZE_BYTES] = {0};
 
 esp_netif_ip_info_t server_get_ip_info(void)
 {
@@ -13,9 +14,9 @@ esp_netif_ip_info_t server_get_ip_info(void)
     return ip_info;
 }
 
-int server_send(char *message, size_t message_len, struct sockaddr *client_addr, socklen_t *client_addr_len)
+int server_send(struct sockaddr *client_addr, socklen_t *client_addr_len)
 {
-    return sendto(server_socket, message, message_len + 1, 0, client_addr, *client_addr_len);
+    return sendto(server_socket, server_tx_buff, TEST_PACKET_SIZE_BYTES, 0, client_addr, *client_addr_len);
 }
 
 static void init_local_data_socket(int *socket_ptr, struct sockaddr_in *address_ptr)
@@ -133,45 +134,39 @@ static void server_init(void)
 
 static void process_request(struct sockaddr *client_addr, socklen_t *client_addr_len)
 {
-    static const uint8_t expected_response_count = 4;
-
-    char response_buff[512] = {0};
-    char uart_rx_buff[256] = {0};
+    uint8_t uart_rx_buff[TEST_PACKET_SIZE_BYTES] = {0};
 
     printf("Processing request from client.\n");
-    printf("Request string: %s\n", rx_buff);
+    printf("Request string: %s\n", server_rx_buff+TEST_PACKET_STRING_HEAD_OFFSET);
 
-    snprintf(response_buff, sizeof(response_buff), "Server confirms receiving test string: %s", rx_buff);
-    server_send(response_buff, strlen(response_buff), client_addr, client_addr_len);
+    packet_init(server_tx_buff);
+    server_tx_buff[TEST_PACKET_MSG_BYTE_OFFSET] = TESTMSG_ACK_SERVER;
+    server_send(client_addr, client_addr_len);
 
-    uint8_t msg_len = strlen((char *)rx_buff);
-    uart_send((const char*)&msg_len, 1);
-    uart_send((const char*)rx_buff, msg_len);
-
-    bzero(response_buff, sizeof(response_buff));
-    snprintf(response_buff, sizeof(response_buff), "Server confirms forwarding test string via UART.\n");
-    server_send(response_buff, strlen(response_buff), client_addr, client_addr_len);
-
+    uart_send(server_rx_buff);
     printf("Forwarded request via UART, awaiting response from device.\n");
 
-    uint8_t response_count = 0;
+    bool received_results = false;
 
-    while(response_count < expected_response_count)
+    while(!received_results)
     {
+        explicit_bzero(uart_rx_buff, sizeof(uart_rx_buff));
         size_t received_bytes = 0;
 
         while (received_bytes <= 0)
         {
-            bzero(uart_rx_buff, sizeof(uart_rx_buff));
+            vTaskDelay(pdMS_TO_TICKS(10));
             received_bytes = uart_receive(uart_rx_buff);
         }
 
-        response_count++;
+        if (uart_rx_buff[TEST_PACKET_MSG_BYTE_OFFSET] == TESTMSG_RESULT)
+        {
+            received_results = true;
+            printf("Forwarding results to client and concluding.\n");
+        }
 
-        bzero(response_buff, sizeof(response_buff));
-        snprintf(response_buff, sizeof(response_buff), "Response from device: %s", uart_rx_buff);
-        printf("%s\n", response_buff);
-        while(0 > server_send(response_buff, strlen(response_buff), client_addr, client_addr_len));
+        memcpy(server_tx_buff, uart_rx_buff, TEST_PACKET_SIZE_BYTES);
+        while(0 > server_send(client_addr, client_addr_len));
     }
 }
 
@@ -179,15 +174,15 @@ static int receive_request()
 {
     struct sockaddr client_addr;
     socklen_t client_addr_len;
-    bzero(&rx_buff, sizeof(rx_buff));
-    int ret = recvfrom(server_socket, &rx_buff, sizeof(rx_buff), 0, &client_addr, &client_addr_len);
+    explicit_bzero(&server_rx_buff, sizeof(server_rx_buff));
+    int received_bytes = recvfrom(server_socket, &server_rx_buff, sizeof(server_rx_buff), 0, &client_addr, &client_addr_len);
 
-    if (ret > 0)
+    if (received_bytes > 0)
     {
         process_request(&client_addr, &client_addr_len);
     }
 
-    return ret;
+    return received_bytes;
 }
 
 static void server_loop(void)

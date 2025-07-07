@@ -13,17 +13,14 @@ DEBUG_FLAGS= $(STRICT_FLAGS) -g -o0
 default:
 	mkdir $(BUILD_DIR)
 	g++ $(SOURCE) $(DEFAULT_FLAGS) $(INC) $(LIBS) -o $(EXE_PATH)
-	make setcap
                                      
 strict:                              
 	mkdir $(BUILD_DIR)
 	bear -- g++ $(SOURCE) $(STRICT_FLAGS) $(INC) $(LIBS) -o $(EXE_PATH)
-	make setcap
                     
 debug:              
 	mkdir $(BUILD_DIR)
 	g++ $(SOURCE) $(DEBUG_FLAGS) $(INC) $(LIBS) -o $(EXE_PATH)
-	make setcap
 
 .ONESHELL:
 run:
@@ -42,7 +39,3 @@ valgrind:
 clean:
 	rm -rf $(BUILD_DIR)
 	rm -f compile_commands.json
-
-setcap:
-	sudo setcap 'CAP_NET_BIND_SERVICE=ep' $(EXE_PATH)
-

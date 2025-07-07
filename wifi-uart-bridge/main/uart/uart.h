@@ -8,10 +8,13 @@
 #include "hal/uart_hal.h"
 #include "hal/uart_types.h"
 
+#include "test_packet_def.h"
+#include "packet_ops.h"
+
 extern volatile bool uart_initialized;
 
-void uart_send(const char *message, uint8_t len);
-int uart_receive(char *buff);
-void uart_task(void *arg);
+void uart_init(void);
+void uart_send(const uint8_t *buff);
+int uart_receive(uint8_t *buff);
 
 #endif
